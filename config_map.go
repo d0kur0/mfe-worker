@@ -11,23 +11,20 @@ import (
 var configPlaces = [...]string{".mfe-worker.json", "~/.mfe-worker.json"}
 
 type Project struct {
-	// gitlab project id
-	ProjectID string `json:"projectID"`
-	// branches white list, is array empty - track all
-	Branches []string `json:"branches"`
+	ProjectID     string   `json:"projectID"`
+	ProjectName   string   `json:"projectName"`
+	Branches      []string `json:"branches"`
+	BuildCommands []string `json:"buildCommands"`
+	DistFiles     []string `json:"distFiles"`
 }
 
 type ConfigMap struct {
-	// base url for gitlab instance
-	GitlabUrl string `json:"gitlabUrl"`
-	// token with access to read projects
-	GitlabToken string `json:"gitlabToken"`
-	// path for store build artifacts
-	StoragePath string `json:"storagePath"`
-	// projects list
-	Projects []Project `json:"projects"`
+	GitlabUrl   string    `json:"gitlabUrl"`
+	GitlabToken string    `json:"gitlabToken"`
+	StoragePath string    `json:"storagePath"`
+	Projects    []Project `json:"projects"`
 }
-
+ 
 func (c *ConfigMap) ReadFromFileSystem() error {
 	defaultPlacePath := ""
 
@@ -47,8 +44,11 @@ func (c *ConfigMap) ReadFromFileSystem() error {
 			GitlabToken: "[gitlab token with access to read projects]",
 			StoragePath: "[path to dir for store build assets]",
 			Projects: []Project{{
-				ProjectID: "[project id of gitlab]",
-				Branches:  []string{"[branches white list or empty array for pass all names]"},
+				Branches:      []string{"[branches white list or empty array for pass all names]"},
+				ProjectID:     "[project id of gitlab]",
+				ProjectName:   "[project name (any value, not gitlab name)]",
+				DistFiles:     []string{"[files what need to save after build and share]", "dist/app.js", "dist/app.css"},
+				BuildCommands: []string{"[commands for build project after clone]", "npm run prebuild", "npm run build"},
 			}},
 		}
 

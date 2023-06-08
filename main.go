@@ -1,6 +1,8 @@
 package main
 
-import "log"
+import (
+	"log"
+)
 
 func main() {
 	var configMap ConfigMap
@@ -9,9 +11,11 @@ func main() {
 		log.Fatalf("failed init configuration: %s", err)
 	}
 
-	var artifactDriver = NewArtifactDriver(configMap)
+	var fsDriver = NewFSDriver(configMap)
 
-	if err := artifactDriver.LookAtRequirements(); err != nil {
+	if err := fsDriver.LookAtRequirements(); err != nil {
 		log.Fatalf("failed on check requirements: %s", err)
 	}
+
+	// ...
 }
