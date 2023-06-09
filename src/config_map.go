@@ -1,4 +1,4 @@
-package main
+package src
 
 import (
 	"encoding/json"
@@ -11,21 +11,23 @@ import (
 var configPlaces = [...]string{".mfe-worker.json", "~/.mfe-worker.json"}
 
 type Project struct {
-	ProjectID     string   `json:"projectID"`
-	ProjectName   string   `json:"projectName"`
 	Branches      []string `json:"branches"`
-	BuildCommands []string `json:"buildCommands"`
-	DistFiles     []string `json:"distFiles"`
+	ProjectID     string   `json:"project_id"`
+	DistFiles     []string `json:"dist_files"`
+	ProjectName   string   `json:"project_name"`
+	BuildCommands []string `json:"build_commands"`
 }
 
 type ConfigMap struct {
-	GitlabUrl   string    `json:"gitlabUrl"`
-	GitlabToken string    `json:"gitlabToken"`
-	StoragePath string    `json:"storagePath"`
+	HttpPort    uint      `json:"http_port"`
+	DBPath      string    `json:"db_path"`
 	Projects    []Project `json:"projects"`
+	GitlabUrl   string    `json:"gitlab_url"`
+	GitlabToken string    `json:"gitlab_token"`
+	StoragePath string    `json:"storage_path"`
 }
- 
-func (c *ConfigMap) ReadFromFileSystem() error {
+
+func (ctx *ConfigMap) ReadFromFileSystem() error {
 	defaultPlacePath := ""
 
 	for _, path := range configPlaces {
@@ -40,14 +42,16 @@ func (c *ConfigMap) ReadFromFileSystem() error {
 		log.Printf("trying create config file from template at: %s", configPlaces[0])
 
 		configMapTemplate := ConfigMap{
+			HttpPort:    3123,
+			DBPath:      "[path for save sqlite db file, ex: mf_worker.db]",
 			GitlabUrl:   "[base gitlab instance url]",
 			GitlabToken: "[gitlab token with access to read projects]",
 			StoragePath: "[path to dir for store build assets]",
 			Projects: []Project{{
 				Branches:      []string{"[branches white list or empty array for pass all names]"},
 				ProjectID:     "[project id of gitlab]",
-				ProjectName:   "[project name (any value, not gitlab name)]",
 				DistFiles:     []string{"[files what need to save after build and share]", "dist/app.js", "dist/app.css"},
+				ProjectName:   "[project name (any value, not gitlab name)]",
 				BuildCommands: []string{"[commands for build project after clone]", "npm run prebuild", "npm run build"},
 			}},
 		}
@@ -69,7 +73,7 @@ func (c *ConfigMap) ReadFromFileSystem() error {
 		return errors.Join(fmt.Errorf("failed on read config file `%s`, check access rights", defaultPlacePath), err)
 	}
 
-	if err := json.Unmarshal(configAsBytes, c); err != nil {
+	if err := json.Unmarshal(configAsBytes, ctx); err != nil {
 		return errors.Join(errors.New("failed on parse configuration file from JSON"), err)
 	}
 
