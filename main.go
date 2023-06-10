@@ -22,7 +22,8 @@ func main() {
 		log.Fatalf("failed on init dbDriver: %s", err)
 	}
 
-	httpServer, err := src.NewHttpServer(&configMap, src.NewPipeline(dbDriver, fsDriver))
+	pipeline := src.NewPipeline(dbDriver, fsDriver, &configMap)
+	httpServer, err := src.NewHttpServer(&configMap, pipeline)
 	if err != nil {
 		log.Fatalf("failed on init httpServer: %s", err)
 	}

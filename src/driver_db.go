@@ -7,18 +7,27 @@ import (
 	"gorm.io/gorm"
 )
 
-type Artifact struct {
+type ImageStatus uint
+
+const (
+	QUEUED      ImageStatus = iota
+	READY                   = iota
+	IN_PROGRESS             = iota
+)
+
+type Image struct {
 	gorm.Model
-	Branch    string         `json:"branch"`
-	ProjectId string         `json:"project_id"`
-	Revision  string         `json:"revision"`
-	Files     []ArtifactFile `json:"files"`
+	Files     []ImageFile `json:"files"`
+	Branch    string      `json:"branch"`
+	Status    ImageStatus `json:"status"`
+	Revision  string      `json:"revision"`
+	ProjectId string      `json:"project_id"`
 }
 
-type ArtifactFile struct {
+type ImageFile struct {
 	gorm.Model
-	WebPath    string `json:"web_path"`
-	ArtifactID uint   `json:"-"`
+	WebPath string `json:"web_path"`
+	ImageId uint   `json:"-"`
 }
 
 type DBDriver struct {
@@ -26,12 +35,12 @@ type DBDriver struct {
 	configMap *ConfigMap
 }
 
-func (ctx *DBDriver) Save(artifact *Artifact) error {
+func (ctx *DBDriver) Save(artifact *Image) error {
 	return ctx.db.Create(artifact).Error
 }
 
-func (ctx *DBDriver) GetList() (artifacts []Artifact, err error) {
-	err = ctx.db.Model(&Artifact{}).Preload("Files").Find(&artifacts).Error
+func (ctx *DBDriver) GetList() (artifacts []Image, err error) {
+	err = ctx.db.Model(&Image{}).Preload("Files").Find(&artifacts).Error
 	return
 }
 
@@ -45,7 +54,7 @@ func NewDBDriver(configMap *ConfigMap) (*DBDriver, error) {
 		return nil, errors.Join(fmt.Errorf("failed on open sqlite db on path: %s", configMap.DBPath), err)
 	}
 
-	err = db.AutoMigrate(&ArtifactFile{}, &Artifact{})
+	err = db.AutoMigrate(&ImageFile{}, &Image{})
 	if err != nil {
 		return nil, errors.Join(errors.New("failed on auto migrate db models"), err)
 	}

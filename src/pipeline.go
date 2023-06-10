@@ -1,17 +1,19 @@
 package src
 
 type Pipeline struct {
-	dbDriver *DBDriver
-	fsDriver *FSDriver
+	configMap *ConfigMap
+	dbDriver  *DBDriver
+	fsDriver  *FSDriver
 }
 
 func (ctx *Pipeline) Run() {
-
+	// build app
 }
 
-func NewPipeline(dbDriver *DBDriver, fsDriver *FSDriver) *Pipeline {
+func NewPipeline(dbDriver *DBDriver, fsDriver *FSDriver, configMap *ConfigMap) *Pipeline {
 	return &Pipeline{
-		dbDriver: dbDriver,
-		fsDriver: fsDriver,
+		dbDriver:  dbDriver,
+		fsDriver:  fsDriver,
+		configMap: configMap,
 	}
 }
