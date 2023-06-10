@@ -35,6 +35,7 @@ func (q *Queue) StartQueueWorker() {
 				}
 
 				q.queueStatus = QueueStatusLock
+
 				var wg sync.WaitGroup
 				var batch = lo.Slice(q.queue, 0, QueueLength)
 

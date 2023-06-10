@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/xanzy/go-gitlab"
 	"log"
 	"mfe-worker/src"
 )
@@ -24,7 +26,10 @@ func main() {
 	queue := src.NewQueue(configMap)
 	queue.StartQueueWorker()
 
-	diContainer := src.NewDIContainer(configMap, queue, fsDriver, dbDriver)
+	gitlabClientArgs := gitlab.WithBaseURL(fmt.Sprintf("%s/api/v4", configMap.GitlabUrl))
+	gitlabClient, err := gitlab.NewClient(configMap.GitlabToken, gitlabClientArgs)
+
+	diContainer := src.NewDIContainer(configMap, queue, fsDriver, dbDriver, gitlabClient)
 
 	httpServer, err := src.NewHttpServer(diContainer)
 	if err != nil {
