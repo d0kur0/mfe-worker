@@ -6,29 +6,33 @@ import (
 )
 
 func main() {
-	var configMap src.ConfigMap
-
-	if err := configMap.ReadFromFileSystem(); err != nil {
+	configMap, err := src.NewConfigMap()
+	if err != nil {
 		log.Fatalf("failed init configuration: %s", err)
 	}
 
-	fsDriver, err := src.NewFSDriver(&configMap)
+	fsDriver, err := src.NewFSDriver(configMap)
 	if err != nil {
 		log.Fatalf("failed on init fsDriver: %s", err)
 	}
 
-	dbDriver, err := src.NewDBDriver(&configMap)
+	dbDriver, err := src.NewDBDriver(configMap)
 	if err != nil {
 		log.Fatalf("failed on init dbDriver: %s", err)
 	}
 
-	pipeline := src.NewPipeline(dbDriver, fsDriver, &configMap)
-	httpServer, err := src.NewHttpServer(&configMap, pipeline)
+	queue := src.NewQueue(configMap)
+	queue.StartQueueWorker()
+
+	diContainer := src.NewDIContainer(configMap, queue, fsDriver, dbDriver)
+
+	httpServer, err := src.NewHttpServer(diContainer)
 	if err != nil {
 		log.Fatalf("failed on init httpServer: %s", err)
 	}
 
-	_ = fsDriver
-	_ = dbDriver
-	_ = httpServer
+	err = httpServer.SetupHttpHandlers()
+	if err != nil {
+		log.Fatalf("failed on SetupHttpHandlers: %s", err)
+	}
 }

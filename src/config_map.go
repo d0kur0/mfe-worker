@@ -79,3 +79,8 @@ func (ctx *ConfigMap) ReadFromFileSystem() error {
 
 	return nil
 }
+
+func NewConfigMap() (*ConfigMap, error) {
+	var configMap ConfigMap
+	return &configMap, configMap.ReadFromFileSystem()
+}

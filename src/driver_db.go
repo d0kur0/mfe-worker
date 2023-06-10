@@ -10,9 +10,9 @@ import (
 type ImageStatus uint
 
 const (
-	QUEUED      ImageStatus = iota
-	READY                   = iota
-	IN_PROGRESS             = iota
+	ImageStatusQueued     ImageStatus = iota
+	ImageStatusReady                  = iota
+	ImageStatusInProgress             = iota
 )
 
 type Image struct {
@@ -35,8 +35,9 @@ type DBDriver struct {
 	configMap *ConfigMap
 }
 
-func (ctx *DBDriver) Save(artifact *Image) error {
-	return ctx.db.Create(artifact).Error
+func (ctx *DBDriver) Save(image *Image) (*Image, error) {
+	result := ctx.db.Create(&image)
+	return image, result.Error
 }
 
 func (ctx *DBDriver) GetList() (artifacts []Image, err error) {
