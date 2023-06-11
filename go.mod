@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/labstack/echo/v4 v4.10.2
 	github.com/samber/lo v1.38.1
+	github.com/xanzy/go-gitlab v0.84.0
 	gorm.io/driver/sqlite v1.5.2
 	gorm.io/gorm v1.25.2-0.20230530020048-26663ab9bf55
 )
@@ -23,7 +24,6 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.17 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
-	github.com/xanzy/go-gitlab v0.84.0 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
 	golang.org/x/net v0.8.0 // indirect

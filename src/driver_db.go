@@ -35,9 +35,8 @@ type DBDriver struct {
 	configMap *ConfigMap
 }
 
-func (ctx *DBDriver) Save(image *Image) (*Image, error) {
-	result := ctx.db.Create(&image)
-	return image, result.Error
+func (ctx *DBDriver) Save(image *Image) error {
+	return ctx.db.Create(&image).Error
 }
 
 func (ctx *DBDriver) GetList() (artifacts []Image, err error) {

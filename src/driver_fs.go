@@ -19,9 +19,12 @@ func NewFSDriver(configMap *ConfigMap) (*FSDriver, error) {
 	}
 
 	imagesPath := path.Join(configMap.StoragePath, "/images")
+	_, imagesPathHasExists := os.Stat(imagesPath)
 
-	if err := os.Mkdir(imagesPath, 755); err != nil {
-		return nil, errors.Join(fmt.Errorf(`failed on create dir: %s`, imagesPath), err)
+	if imagesPathHasExists != nil {
+		if err := os.Mkdir(imagesPath, 755); err != nil {
+			return nil, errors.Join(fmt.Errorf(`failed on create dir: %s`, imagesPath), err)
+		}
 	}
 
 	return &FSDriver{configMap: configMap, imagesPath: imagesPath}, nil
