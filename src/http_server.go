@@ -5,8 +5,12 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/samber/lo"
+	"github.com/xanzy/go-gitlab"
 	"log"
 	"net/http"
+	"os"
+	"path"
+	"strings"
 	"sync"
 )
 
@@ -42,22 +46,50 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 	h.di.queue.AddToQueue(func(wg *sync.WaitGroup) {
 		defer wg.Done()
 
-		getBranch, _, err := h.di.gitlabClient.Branches.GetBranch(projectID, branch)
+		gitBranch, _, err := h.di.gitlabClient.Branches.GetBranch(projectID, branch)
 		if err != nil {
 			log.Printf("failed on get info of branch: %s", err)
 			return
 		}
 
+		gitProject, _, err := h.di.gitlabClient.Projects.GetProject(projectID, &gitlab.GetProjectOptions{})
+
 		image := Image{
 			Branch:    branch,
 			Status:    ImageStatusQueued,
-			Revision:  getBranch.Commit.ShortID,
+			Revision:  gitBranch.Commit.ShortID,
 			ProjectId: projectID,
 		}
 
 		if err := h.di.dbDriver.Save(&image); err != nil {
 			log.Printf("failed on create image to db: %s", err)
 			return
+		}
+
+		tmpDirName := path.Join(
+			h.di.configMap.StoragePath,
+			fmt.Sprintf("%s-%s-%s", gitBranch.Commit.ShortID, projectID, branch),
+		)
+
+		if _, err := os.Stat(tmpDirName); !os.IsNotExist(err) {
+			log.Printf("tmp dir already exists, skip: %s", tmpDirName)
+		}
+
+		clonePath := fmt.Sprintf(
+			"%s://oauth2:%s@%s/%s/%s.git",
+			"http",
+			h.di.configMap.GitlabToken,
+			strings.Split(h.di.configMap.GitlabUrl, "://")[1],
+			gitProject.Namespace.FullPath,
+			gitProject.Name,
+		)
+
+		cloneArgs := []string{"clone", "--single-branch", "--branch", branch, clonePath, tmpDirName}
+
+		_, err = ExecShellCommand("git", cloneArgs, ExecShellCommandArgs{})
+
+		if err := os.RemoveAll(tmpDirName); err != nil {
+			log.Printf("failed on remove tmp dir: %s (%s)", tmpDirName, err)
 		}
 	})
 
