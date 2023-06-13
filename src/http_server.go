@@ -48,8 +48,17 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"code": "SERVER_WAS_SUCK"})
 	}
 
-	var imageWithSameRevision *Image
-	h.di.dbDriver.db.Where("revision = ? AND project_id = ? AND branch = ?", gitBranch.Commit.ShortID, projectID, branch).First(imageWithSameRevision)
+	// TODO: move to db driver
+	var hasImageWithSameRevision bool
+	h.di.dbDriver.db.
+		Model(&Image{}).
+		Select("count(*) > 0").
+		Where("revision = ? AND project_id = ? AND branch = ?", gitBranch.Commit.ShortID, projectID, branch).
+		Find(&hasImageWithSameRevision)
+
+	if hasImageWithSameRevision {
+		return c.JSON(http.StatusBadRequest, map[string]string{"code": "BRANCH_NOT_CHANGED"})
+	}
 
 	h.di.queue.AddToQueue(func(wg *sync.WaitGroup) error {
 		defer wg.Done()
