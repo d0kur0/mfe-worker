@@ -2,6 +2,7 @@ package src
 
 import (
 	"github.com/samber/lo"
+	"log"
 	"sync"
 	"time"
 )
@@ -15,7 +16,7 @@ const (
 
 const QueueLength = 5
 
-type Worker func(wg *sync.WaitGroup)
+type Worker func(wg *sync.WaitGroup) error
 
 type Queue struct {
 	queue       []Worker
@@ -41,7 +42,13 @@ func (q *Queue) StartQueueWorker() {
 
 				for _, task := range batch {
 					wg.Add(1)
-					go task(&wg)
+					task := task
+					go func() {
+						err := task(&wg)
+						if err != nil {
+							log.Printf("queue task error: %s", err)
+						}
+					}()
 				}
 
 				wg.Wait()

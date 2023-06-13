@@ -3,6 +3,7 @@ package src
 import (
 	"errors"
 	"fmt"
+	"github.com/xanzy/go-gitlab"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,17 +31,21 @@ func NewFSDriver(configMap *ConfigMap) (*FSDriver, error) {
 	return &FSDriver{configMap: configMap, imagesPath: imagesPath}, nil
 }
 
-func (ctx *FSDriver) hasProject(projectId string) bool {
-	_, err := os.Stat(filepath.Join(ctx.configMap.StoragePath, projectId))
+func (d *FSDriver) getProjectPath(projectId string) string {
+	return filepath.Join(d.imagesPath, projectId)
+}
+
+func (d *FSDriver) hasProject(projectId string) bool {
+	_, err := os.Stat(d.getProjectPath(projectId))
 	return err != nil
 }
 
-func (ctx *FSDriver) createProject(projectId string) error {
-	if alreadyExist := ctx.hasProject(projectId); alreadyExist {
+func (d *FSDriver) createProject(projectId string) error {
+	if alreadyExist := d.hasProject(projectId); alreadyExist {
 		return errors.New("trying create project what is already exists")
 	}
 
-	projectPath := filepath.Join(ctx.configMap.StoragePath, projectId)
+	projectPath := d.getProjectPath(projectId)
 
 	if err := os.Mkdir(projectPath, 0755); err != nil {
 		return errors.Join(fmt.Errorf("failed on create project dir: `%s`", projectPath), err)
@@ -49,20 +54,64 @@ func (ctx *FSDriver) createProject(projectId string) error {
 	return nil
 }
 
-func (ctx *FSDriver) hasProjectBranch(projectId string, branch string) bool {
-	_, err := os.Stat(filepath.Join(ctx.configMap.StoragePath, projectId, branch))
+func (d *FSDriver) getProjectBranchPath(projectId string, branch string) string {
+	return filepath.Join(d.imagesPath, projectId, branch)
+}
+
+func (d *FSDriver) hasProjectBranch(projectId string, branch string) bool {
+	_, err := os.Stat(d.getProjectBranchPath(projectId, branch))
 	return err != nil
 }
 
-func (ctx *FSDriver) createProjectBranch(projectId string, branch string) error {
-	if alreadyExist := ctx.hasProjectBranch(projectId, branch); alreadyExist {
+func (d *FSDriver) createProjectBranch(projectId string, branch string) error {
+	if alreadyExist := d.hasProjectBranch(projectId, branch); alreadyExist {
 		return errors.New("trying create project branch what is already exists")
 	}
 
-	projectBranchPath := filepath.Join(ctx.configMap.StoragePath, projectId, branch)
+	projectBranchPath := d.getProjectBranchPath(projectId, branch)
 
 	if err := os.Mkdir(projectBranchPath, 0755); err != nil {
 		return errors.Join(fmt.Errorf("failed on create project branch dir: `%s`", projectBranchPath), err)
+	}
+
+	return nil
+}
+
+func (d *FSDriver) getBranchRevisionPath(projectId string, branch string, revision string) string {
+	return filepath.Join(d.imagesPath, projectId, branch, revision)
+}
+
+func (d *FSDriver) hasBranchRevision(projectId string, branch string, revision string) bool {
+	_, err := os.Stat(d.getBranchRevisionPath(projectId, branch, revision))
+	return err != nil
+}
+
+func (d *FSDriver) createBranchRevision(projectId string, branch string, revision string) error {
+	if alreadyExist := d.hasBranchRevision(projectId, branch, revision); alreadyExist {
+		return errors.New("trying create branch revision what is already exists")
+	}
+
+	projectBranchPath := d.getProjectBranchPath(projectId, branch)
+
+	if err := os.Mkdir(projectBranchPath, 0755); err != nil {
+		return errors.Join(fmt.Errorf("failed on create branch revision dir: `%s`", projectBranchPath), err)
+	}
+
+	return nil
+}
+
+func (d *FSDriver) pickFilesToWebStorage(project *Project, glBranch *gitlab.Branch, tmpPath string) error {
+	branchRevisionPath := d.getBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
+	for _, file := range project.DistFiles {
+		input, err := os.ReadFile(path.Join(d.imagesPath, file))
+		if err != nil {
+			return err
+		}
+
+		err = os.WriteFile(path.Join(branchRevisionPath, file), input, 0644)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
