@@ -9,8 +9,6 @@ import (
 	"github.com/xanzy/go-gitlab"
 	"log"
 	"net/http"
-	"os"
-	"path"
 	"strings"
 	"sync"
 )
@@ -76,13 +74,17 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 			return errors.Join(errors.New("failed on create image to db"), err)
 		}
 
-		tmpDirName := path.Join(
-			h.di.configMap.StoragePath,
-			fmt.Sprintf("%s-%s-%s", gitBranch.Commit.ShortID, projectID, branch),
-		)
+		defer func(fsDriver *FSDriver, projectId string, branch string, revision string) {
+			err := fsDriver.removeTmpDirForBuild(projectId, branch, revision)
+			if err != nil {
+				log.Printf("failed on clear tmp dir: %s", err)
+			}
+		}(h.di.fsDriver, projectID, branch, gitBranch.Commit.ShortID)
 
-		if _, err := os.Stat(tmpDirName); !os.IsNotExist(err) {
-			return errors.Join(fmt.Errorf("tmp dir already exists, skip: %s", tmpDirName), err)
+		tmpDirName := h.di.fsDriver.getTmpPathForBuild(projectID, branch, gitBranch.Commit.ShortID)
+
+		if h.di.fsDriver.hasTmpDirForBuild(projectID, branch, gitBranch.Commit.ShortID) {
+			return fmt.Errorf("tmp dir already exists, skip: %s", tmpDirName)
 		}
 
 		clonePath := fmt.Sprintf(
@@ -124,12 +126,15 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 			}
 		}
 
-		if err := h.di.fsDriver.pickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName); err != nil {
-			return err
+		branchRevisionExists := h.di.fsDriver.hasBranchRevision(projectID, branch, gitBranch.Commit.ShortID)
+		if !branchRevisionExists {
+			if err := h.di.fsDriver.createBranchRevision(projectID, branch, gitBranch.Commit.ShortID); err != nil {
+				return err
+			}
 		}
 
-		if err := os.RemoveAll(tmpDirName); err != nil {
-			return errors.Join(fmt.Errorf("failed on remove tmp dir: %s", tmpDirName), err)
+		if err := h.di.fsDriver.pickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName); err != nil {
+			return err
 		}
 
 		return nil
