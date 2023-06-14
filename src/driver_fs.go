@@ -31,104 +31,97 @@ func NewFSDriver(configMap *ConfigMap) (*FSDriver, error) {
 	return &FSDriver{configMap: configMap, imagesPath: imagesPath}, nil
 }
 
-func (d *FSDriver) getProjectPath(projectId string) string {
+func (d *FSDriver) IsDirExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func (d *FSDriver) CreateDir(path string) error {
+	if d.IsDirExists(path) {
+		return errors.New("trying create dir what is already exists")
+	}
+
+	return os.Mkdir(path, 0755)
+}
+
+func (d *FSDriver) GetProjectPath(projectId string) string {
 	return filepath.Join(d.imagesPath, projectId)
 }
 
-func (d *FSDriver) hasProject(projectId string) bool {
-	_, err := os.Stat(d.getProjectPath(projectId))
-	return err == nil
+func (d *FSDriver) HasProjectDir(projectId string) bool {
+	return d.IsDirExists(d.GetProjectPath(projectId))
 }
 
-func (d *FSDriver) createProject(projectId string) error {
-	if alreadyExist := d.hasProject(projectId); alreadyExist {
-		return errors.New("trying create project what is already exists")
-	}
-
-	projectPath := d.getProjectPath(projectId)
-
-	if err := os.Mkdir(projectPath, 0755); err != nil {
-		return errors.Join(fmt.Errorf("failed on create project dir: `%s`", projectPath), err)
-	}
-
-	return nil
+func (d *FSDriver) CreateProjectDir(projectId string) error {
+	return d.CreateDir(d.GetProjectPath(projectId))
 }
 
-func (d *FSDriver) getProjectBranchPath(projectId string, branch string) string {
+func (d *FSDriver) GetProjectBranchPath(projectId string, branch string) string {
 	return filepath.Join(d.imagesPath, projectId, branch)
 }
 
-func (d *FSDriver) hasProjectBranch(projectId string, branch string) bool {
-	_, err := os.Stat(d.getProjectBranchPath(projectId, branch))
-	return err == nil
+func (d *FSDriver) HasProjectBranchDir(projectId string, branch string) bool {
+	return d.IsDirExists(d.GetProjectBranchPath(projectId, branch))
 }
 
-func (d *FSDriver) createProjectBranch(projectId string, branch string) error {
-	if alreadyExist := d.hasProjectBranch(projectId, branch); alreadyExist {
-		return errors.New("trying create project branch what is already exists")
-	}
-
-	projectBranchPath := d.getProjectBranchPath(projectId, branch)
-
-	if err := os.Mkdir(projectBranchPath, 0755); err != nil {
-		return errors.Join(fmt.Errorf("failed on create project branch dir: `%s`", projectBranchPath), err)
-	}
-
-	return nil
+func (d *FSDriver) CreateProjectBranchDir(projectId string, branch string) error {
+	return d.CreateDir(d.GetProjectBranchPath(projectId, branch))
 }
 
-func (d *FSDriver) getBranchRevisionPath(projectId string, branch string, revision string) string {
+func (d *FSDriver) GetBranchRevisionPath(projectId string, branch string, revision string) string {
 	return filepath.Join(d.imagesPath, projectId, branch, revision)
 }
 
-func (d *FSDriver) hasBranchRevision(projectId string, branch string, revision string) bool {
-	_, err := os.Stat(d.getBranchRevisionPath(projectId, branch, revision))
-	return err == nil
+func (d *FSDriver) HasBranchRevisionDir(projectId string, branch string, revision string) bool {
+	return d.IsDirExists(d.GetBranchRevisionPath(projectId, branch, revision))
 }
 
-func (d *FSDriver) createBranchRevision(projectId string, branch string, revision string) error {
-	if alreadyExist := d.hasBranchRevision(projectId, branch, revision); alreadyExist {
-		return errors.New("trying create branch revision what is already exists")
-	}
+func (d *FSDriver) CreateBranchRevisionDir(projectId string, branch string, revision string) error {
+	return d.CreateDir(d.GetBranchRevisionPath(projectId, branch, revision))
+}
 
-	projectBranchPath := d.getBranchRevisionPath(projectId, branch, revision)
+func (d *FSDriver) PickFilesToWebStorage(project *Project, glBranch *gitlab.Branch, tmpPath string) error {
+	branchRevisionPath := d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
 
-	if err := os.Mkdir(projectBranchPath, 0755); err != nil {
-		return errors.Join(fmt.Errorf("failed on create branch revision dir: `%s`", projectBranchPath), err)
+	for _, filePath := range project.DistFiles {
+		input, err := os.ReadFile(path.Join(tmpPath, filePath))
+		if err != nil {
+			return err
+		}
+
+		destDir, _ := filepath.Split(filePath)
+		destDirSegments := filepath.SplitList(destDir)
+
+		for _, seg := range destDirSegments {
+			segPath := path.Join(branchRevisionPath, seg)
+			if !d.IsDirExists(segPath) {
+				if err := d.CreateDir(segPath); err != nil {
+					return err
+				}
+			}
+		}
+
+		err = os.WriteFile(path.Join(branchRevisionPath, filePath), input, 0644)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (d *FSDriver) pickFilesToWebStorage(project *Project, glBranch *gitlab.Branch, tmpPath string) error {
-	branchRevisionPath := d.getBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
-	for _, file := range project.DistFiles {
-		input, err := os.ReadFile(path.Join(tmpPath, file))
-		if err != nil {
-			return err
-		}
-
-		err = os.WriteFile(path.Join(branchRevisionPath, filepath.Base(file)), input, 0644)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (d *FSDriver) getTmpPathForBuild(projectId string, branch string, revision string) string {
+func (d *FSDriver) GetTmpPathForBuild(projectId string, branch string, revision string) string {
 	return path.Join(
 		d.configMap.StoragePath,
 		fmt.Sprintf("%s-%s-%s", projectId, branch, revision),
 	)
 }
 
-func (d *FSDriver) hasTmpDirForBuild(projectId string, branch string, revision string) bool {
-	_, err := os.Stat(d.getTmpPathForBuild(projectId, branch, revision))
+func (d *FSDriver) HasTmpDirForBuild(projectId string, branch string, revision string) bool {
+	_, err := os.Stat(d.GetTmpPathForBuild(projectId, branch, revision))
 	return err == nil
 }
 
-func (d *FSDriver) removeTmpDirForBuild(projectId string, branch string, revision string) error {
-	return os.RemoveAll(d.getTmpPathForBuild(projectId, branch, revision))
+func (d *FSDriver) RemoveTmpDirForBuild(projectId string, branch string, revision string) error {
+	return os.RemoveAll(d.GetTmpPathForBuild(projectId, branch, revision))
 }
