@@ -35,23 +35,27 @@ type DBDriver struct {
 	configMap *ConfigMap
 }
 
-func (ctx *DBDriver) Save(image *Image) error {
-	return ctx.db.Create(&image).Error
+func (d *DBDriver) Save(image *Image) error {
+	return d.db.Create(&image).Error
 }
 
-func (ctx *DBDriver) GetList() (artifacts []Image, err error) {
-	err = ctx.db.Model(&Image{}).Preload("Files").Find(&artifacts).Error
+func (d *DBDriver) Update(image *Image) error {
+	return d.db.Updates(&image).Error
+}
+
+func (d *DBDriver) GetList() (images []Image, err error) {
+	err = d.db.Model(&Image{}).Preload("Files").Find(&images).Error
 	return
 }
 
-func (ctx *DBDriver) CleanUp() error {
+func (d *DBDriver) CleanUp() error {
 	return nil
 }
 
-func (ctx *DBDriver) IsRevisionExists(projectId string, branch string, revision string) bool {
+func (d *DBDriver) IsRevisionExists(projectId string, branch string, revision string) bool {
 	var hasImageWithSameRevision bool
 
-	ctx.db.
+	d.db.
 		Model(&Image{}).
 		Select("count(*) > 0").
 		Where("revision = ? AND project_id = ? AND branch = ?", revision, projectId, branch).

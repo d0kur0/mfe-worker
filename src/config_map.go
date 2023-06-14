@@ -19,7 +19,7 @@ type Project struct {
 }
 
 type ConfigMap struct {
-	HttpPort    uint      `json:"http_port"`
+	HttpBaseUrl string    `json:"http_base_url"`
 	DBPath      string    `json:"db_path"`
 	Projects    []Project `json:"projects"`
 	GitlabUrl   string    `json:"gitlab_url"`
@@ -42,7 +42,7 @@ func (ctx *ConfigMap) ReadFromFileSystem() error {
 		log.Printf("trying create config file from template at: %s", configPlaces[0])
 
 		configMapTemplate := ConfigMap{
-			HttpPort:    3123,
+			HttpBaseUrl: "[base http url: ex: http://localhost:3433]",
 			DBPath:      "[path for save sqlite db file, ex: mf_worker.db]",
 			GitlabUrl:   "[base gitlab instance url]",
 			GitlabToken: "[gitlab token with access to read projects]",

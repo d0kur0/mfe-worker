@@ -80,34 +80,42 @@ func (d *FSDriver) CreateBranchRevisionDir(projectId string, branch string, revi
 	return d.CreateDir(d.GetBranchRevisionPath(projectId, branch, revision))
 }
 
-func (d *FSDriver) PickFilesToWebStorage(project *Project, glBranch *gitlab.Branch, tmpPath string) error {
+func (d *FSDriver) PickFilesToWebStorage(project *Project, glBranch *gitlab.Branch, tmpPath string) (fileList []string, err error) {
 	branchRevisionPath := d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
 
 	for _, filePath := range project.DistFiles {
 		input, err := os.ReadFile(path.Join(tmpPath, filePath))
 		if err != nil {
-			return err
+			return fileList, err
 		}
 
 		destDir, _ := filepath.Split(filePath)
 		destDirSegments := filepath.SplitList(destDir)
+		// TODO: move images path segment to config
+		fileList = append(
+			fileList,
+			fmt.Sprintf(
+				"%s/images/%s/%s/%s/%s",
+				d.configMap.HttpBaseUrl, project.ProjectID, glBranch.Name, glBranch.Commit.ShortID, filePath,
+			),
+		)
 
 		for _, seg := range destDirSegments {
 			segPath := path.Join(branchRevisionPath, seg)
 			if !d.IsDirExists(segPath) {
 				if err := d.CreateDir(segPath); err != nil {
-					return err
+					return fileList, err
 				}
 			}
 		}
 
 		err = os.WriteFile(path.Join(branchRevisionPath, filePath), input, 0644)
 		if err != nil {
-			return err
+			return fileList, err
 		}
 	}
 
-	return nil
+	return fileList, nil
 }
 
 func (d *FSDriver) GetTmpPathForBuild(projectId string, branch string, revision string) string {

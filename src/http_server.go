@@ -9,6 +9,7 @@ import (
 	"github.com/xanzy/go-gitlab"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 )
@@ -134,11 +135,22 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 			}
 		}
 
-		if err := h.di.fsDriver.PickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName); err != nil {
+		fileList, err := h.di.fsDriver.PickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName)
+		if err != nil {
 			return err
 		}
 
-		return nil
+		var imageFiles []ImageFile
+		for _, filePath := range fileList {
+			imageFiles = append(imageFiles, ImageFile{
+				WebPath: filePath,
+				ImageId: image.ID,
+			})
+		}
+
+		image.Files = imageFiles
+		image.Status = ImageStatusReady
+		return h.di.dbDriver.Update(&image)
 	})
 
 	return c.JSON(http.StatusOK, map[string]string{"code": "ADDED_TO_QUEUE"})
@@ -155,9 +167,16 @@ func (h *HttpServer) SetupHttpHandlers() error {
 		Format: "${time_rfc3339} method=${method}, uri=${uri}, status=${status}\n",
 	}))
 
+	e.Static("images", h.di.fsDriver.imagesPath)
+
 	e.GET("/request-build/:projectID/:branch", h.requestBuild)
 
-	return e.Start(fmt.Sprintf(":%d", h.di.configMap.HttpPort))
+	u, err := url.Parse(h.di.configMap.HttpBaseUrl)
+	if err != nil {
+		return err
+	}
+
+	return e.Start(fmt.Sprintf("%s", u.Host))
 }
 
 func NewHttpServer(di *DIContainer) (*HttpServer, error) {
