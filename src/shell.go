@@ -12,7 +12,6 @@ type ExecShellCommandArgs struct {
 }
 
 func ExecShellCommand(path string, args []string, eArgs ExecShellCommandArgs) (out string, err error) {
-
 	cmd := exec.Command(path, args...)
 
 	if len(eArgs.Cwd) > 0 {

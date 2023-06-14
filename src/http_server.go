@@ -48,15 +48,7 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"code": "SERVER_WAS_SUCK"})
 	}
 
-	// TODO: move to db driver
-	var hasImageWithSameRevision bool
-	h.di.dbDriver.db.
-		Model(&Image{}).
-		Select("count(*) > 0").
-		Where("revision = ? AND project_id = ? AND branch = ?", gitBranch.Commit.ShortID, projectID, branch).
-		Find(&hasImageWithSameRevision)
-
-	if hasImageWithSameRevision {
+	if h.di.dbDriver.IsRevisionExists(projectID, branch, gitBranch.Commit.ShortID) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"code": "BRANCH_NOT_CHANGED"})
 	}
 
@@ -84,15 +76,15 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 		}
 
 		defer func(fsDriver *FSDriver, projectId string, branch string, revision string) {
-			err := fsDriver.removeTmpDirForBuild(projectId, branch, revision)
+			err := fsDriver.RemoveTmpDirForBuild(projectId, branch, revision)
 			if err != nil {
 				log.Printf("failed on clear tmp dir: %s", err)
 			}
 		}(h.di.fsDriver, projectID, branch, gitBranch.Commit.ShortID)
 
-		tmpDirName := h.di.fsDriver.getTmpPathForBuild(projectID, branch, gitBranch.Commit.ShortID)
+		tmpDirName := h.di.fsDriver.GetTmpPathForBuild(projectID, branch, gitBranch.Commit.ShortID)
 
-		if h.di.fsDriver.hasTmpDirForBuild(projectID, branch, gitBranch.Commit.ShortID) {
+		if h.di.fsDriver.HasTmpDirForBuild(projectID, branch, gitBranch.Commit.ShortID) {
 			return fmt.Errorf("tmp dir already exists, skip: %s", tmpDirName)
 		}
 
@@ -121,28 +113,28 @@ func (h *HttpServer) requestBuild(c echo.Context) error {
 			}
 		}
 
-		projectExists := h.di.fsDriver.hasProject(projectID)
+		projectExists := h.di.fsDriver.HasProjectDir(projectID)
 		if !projectExists {
-			if err := h.di.fsDriver.createProject(projectID); err != nil {
+			if err := h.di.fsDriver.CreateProjectDir(projectID); err != nil {
 				return err
 			}
 		}
 
-		branchExists := h.di.fsDriver.hasProjectBranch(projectID, branch)
+		branchExists := h.di.fsDriver.HasProjectBranchDir(projectID, branch)
 		if !branchExists {
-			if err := h.di.fsDriver.createProjectBranch(projectID, branch); err != nil {
+			if err := h.di.fsDriver.CreateProjectBranchDir(projectID, branch); err != nil {
 				return err
 			}
 		}
 
-		branchRevisionExists := h.di.fsDriver.hasBranchRevision(projectID, branch, gitBranch.Commit.ShortID)
+		branchRevisionExists := h.di.fsDriver.HasBranchRevisionDir(projectID, branch, gitBranch.Commit.ShortID)
 		if !branchRevisionExists {
-			if err := h.di.fsDriver.createBranchRevision(projectID, branch, gitBranch.Commit.ShortID); err != nil {
+			if err := h.di.fsDriver.CreateBranchRevisionDir(projectID, branch, gitBranch.Commit.ShortID); err != nil {
 				return err
 			}
 		}
 
-		if err := h.di.fsDriver.pickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName); err != nil {
+		if err := h.di.fsDriver.PickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName); err != nil {
 			return err
 		}
 
@@ -160,12 +152,11 @@ func (h *HttpServer) SetupHttpHandlers() error {
 	}))
 
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: "method=${method}, uri=${uri}, status=${status}\n",
+		Format: "${time_rfc3339} method=${method}, uri=${uri}, status=${status}\n",
 	}))
 
 	e.GET("/request-build/:projectID/:branch", h.requestBuild)
 
-	log.Printf("Server started at http://localhost:%d", h.di.configMap.HttpPort)
 	return e.Start(fmt.Sprintf(":%d", h.di.configMap.HttpPort))
 }
 

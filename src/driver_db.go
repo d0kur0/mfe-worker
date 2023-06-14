@@ -48,6 +48,18 @@ func (ctx *DBDriver) CleanUp() error {
 	return nil
 }
 
+func (ctx *DBDriver) IsRevisionExists(projectId string, branch string, revision string) bool {
+	var hasImageWithSameRevision bool
+
+	ctx.db.
+		Model(&Image{}).
+		Select("count(*) > 0").
+		Where("revision = ? AND project_id = ? AND branch = ?", revision, projectId, branch).
+		Find(&hasImageWithSameRevision)
+
+	return hasImageWithSameRevision
+}
+
 func NewDBDriver(configMap *ConfigMap) (*DBDriver, error) {
 	db, err := gorm.Open(sqlite.Open(configMap.DBPath), &gorm.Config{})
 	if err != nil {
