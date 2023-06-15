@@ -1,20 +1,21 @@
-package src
+package fsDriver
 
 import (
 	"errors"
 	"fmt"
 	"github.com/xanzy/go-gitlab"
+	"mfe-worker/internal/configMap"
 	"os"
 	"path"
 	"path/filepath"
 )
 
 type FSDriver struct {
-	configMap  *ConfigMap
-	imagesPath string
+	configMap  *configMap.ConfigMap
+	ImagesPath string
 }
 
-func NewFSDriver(configMap *ConfigMap) (*FSDriver, error) {
+func NewFSDriver(configMap *configMap.ConfigMap) (*FSDriver, error) {
 	if _, err := os.Stat(configMap.StoragePath); os.IsNotExist(err) {
 		return nil, fmt.Errorf(`storage directory was not found (%s), create it first with correct access rights`, configMap.StoragePath)
 	}
@@ -28,7 +29,7 @@ func NewFSDriver(configMap *ConfigMap) (*FSDriver, error) {
 		}
 	}
 
-	return &FSDriver{configMap: configMap, imagesPath: imagesPath}, nil
+	return &FSDriver{configMap: configMap, ImagesPath: imagesPath}, nil
 }
 
 func (d *FSDriver) IsDirExists(path string) bool {
@@ -45,7 +46,7 @@ func (d *FSDriver) CreateDir(path string) error {
 }
 
 func (d *FSDriver) GetProjectPath(projectId string) string {
-	return filepath.Join(d.imagesPath, projectId)
+	return filepath.Join(d.ImagesPath, projectId)
 }
 
 func (d *FSDriver) HasProjectDir(projectId string) bool {
@@ -57,7 +58,7 @@ func (d *FSDriver) CreateProjectDir(projectId string) error {
 }
 
 func (d *FSDriver) GetProjectBranchPath(projectId string, branch string) string {
-	return filepath.Join(d.imagesPath, projectId, branch)
+	return filepath.Join(d.ImagesPath, projectId, branch)
 }
 
 func (d *FSDriver) HasProjectBranchDir(projectId string, branch string) bool {
@@ -69,7 +70,7 @@ func (d *FSDriver) CreateProjectBranchDir(projectId string, branch string) error
 }
 
 func (d *FSDriver) GetBranchRevisionPath(projectId string, branch string, revision string) string {
-	return filepath.Join(d.imagesPath, projectId, branch, revision)
+	return filepath.Join(d.ImagesPath, projectId, branch, revision)
 }
 
 func (d *FSDriver) HasBranchRevisionDir(projectId string, branch string, revision string) bool {
@@ -80,7 +81,7 @@ func (d *FSDriver) CreateBranchRevisionDir(projectId string, branch string, revi
 	return d.CreateDir(d.GetBranchRevisionPath(projectId, branch, revision))
 }
 
-func (d *FSDriver) PickFilesToWebStorage(project *Project, glBranch *gitlab.Branch, tmpPath string) (fileList []string, err error) {
+func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *gitlab.Branch, tmpPath string) (fileList []string, err error) {
 	branchRevisionPath := d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
 
 	for _, filePath := range project.DistFiles {

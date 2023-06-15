@@ -4,34 +4,39 @@ import (
 	"fmt"
 	"github.com/xanzy/go-gitlab"
 	"log"
-	"mfe-worker/src"
+	"mfe-worker/internal/configMap"
+	"mfe-worker/internal/dbDriver"
+	"mfe-worker/internal/depsInjection"
+	"mfe-worker/internal/fsDriver"
+	"mfe-worker/internal/http"
+	"mfe-worker/internal/queue"
 )
 
 func main() {
-	configMap, err := src.NewConfigMap()
+	configMapInstance, err := configMap.NewConfigMap()
 	if err != nil {
 		log.Fatalf("failed init configuration: %s", err)
 	}
 
-	fsDriver, err := src.NewFSDriver(configMap)
+	fsDriverInstance, err := fsDriver.NewFSDriver(configMapInstance)
 	if err != nil {
 		log.Fatalf("failed on init fsDriver: %s", err)
 	}
 
-	dbDriver, err := src.NewDBDriver(configMap)
+	dbDriverInstance, err := dbDriver.NewDBDriver(configMapInstance)
 	if err != nil {
 		log.Fatalf("failed on init dbDriver: %s", err)
 	}
 
-	queue := src.NewQueue(configMap)
+	queue := queue.NewQueue(configMapInstance)
 	queue.StartQueueWorker()
 
-	gitlabClientArgs := gitlab.WithBaseURL(fmt.Sprintf("%s/api/v4", configMap.GitlabUrl))
-	gitlabClient, err := gitlab.NewClient(configMap.GitlabToken, gitlabClientArgs)
+	gitlabClientArgs := gitlab.WithBaseURL(fmt.Sprintf("%s/api/v4", configMapInstance.GitlabUrl))
+	gitlabClient, err := gitlab.NewClient(configMapInstance.GitlabToken, gitlabClientArgs)
 
-	diContainer := src.NewDIContainer(configMap, queue, fsDriver, dbDriver, gitlabClient)
+	diContainer := depsInjection.NewDIContainer(configMapInstance, queue, fsDriverInstance, dbDriverInstance, gitlabClient)
 
-	httpServer, err := src.NewHttpServer(diContainer)
+	httpServer, err := http.NewHttpServer(diContainer)
 	if err != nil {
 		log.Fatalf("failed on init httpServer: %s", err)
 	}

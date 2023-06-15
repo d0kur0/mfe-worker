@@ -1,27 +1,28 @@
-package src
+package queue
 
 import (
 	"github.com/samber/lo"
 	"log"
+	"mfe-worker/internal/configMap"
 	"sync"
 	"time"
 )
 
-type QueueStatus uint
+type Status uint
 
 const (
-	QueueStatusLock QueueStatus = iota
-	QueueStatusFree             = iota
+	StatusLock Status = iota
+	StatusFree        = iota
 )
 
-const QueueLength = 5
+const Length = 5
 
 type Worker func(wg *sync.WaitGroup) error
 
 type Queue struct {
 	queue       []Worker
-	configMap   *ConfigMap
-	queueStatus QueueStatus
+	configMap   *configMap.ConfigMap
+	queueStatus Status
 }
 
 func (q *Queue) StartQueueWorker() {
@@ -31,14 +32,14 @@ func (q *Queue) StartQueueWorker() {
 		for {
 			select {
 			case <-ticker.C:
-				if q.queueStatus == QueueStatusLock {
+				if q.queueStatus == StatusLock {
 					continue
 				}
 
-				q.queueStatus = QueueStatusLock
+				q.queueStatus = StatusLock
 
 				var wg sync.WaitGroup
-				var batch = lo.Slice(q.queue, 0, QueueLength)
+				var batch = lo.Slice(q.queue, 0, Length)
 
 				for _, task := range batch {
 					wg.Add(1)
@@ -53,8 +54,8 @@ func (q *Queue) StartQueueWorker() {
 
 				wg.Wait()
 
-				q.queue = lo.Slice(q.queue, QueueLength, len(q.queue))
-				q.queueStatus = QueueStatusFree
+				q.queue = lo.Slice(q.queue, Length, len(q.queue))
+				q.queueStatus = StatusFree
 			}
 		}
 	}()
@@ -64,9 +65,9 @@ func (q *Queue) AddToQueue(fn Worker) {
 	q.queue = append(q.queue, fn)
 }
 
-func NewQueue(configMap *ConfigMap) *Queue {
+func NewQueue(configMap *configMap.ConfigMap) *Queue {
 	return &Queue{
 		configMap:   configMap,
-		queueStatus: QueueStatusFree,
+		queueStatus: StatusFree,
 	}
 }
