@@ -3,12 +3,15 @@ package fsDriver
 import (
 	"errors"
 	"fmt"
+	"github.com/samber/lo"
 	"github.com/xanzy/go-gitlab"
 	"mfe-worker/internal/configMap"
 	"os"
 	"path"
 	"path/filepath"
 )
+
+const StorageSubDir = "images"
 
 type FSDriver struct {
 	configMap  *configMap.ConfigMap
@@ -20,7 +23,7 @@ func NewFSDriver(configMap *configMap.ConfigMap) (*FSDriver, error) {
 		return nil, fmt.Errorf(`storage directory was not found (%s), create it first with correct access rights`, configMap.StoragePath)
 	}
 
-	imagesPath := path.Join(configMap.StoragePath, "/images")
+	imagesPath := path.Join(configMap.StoragePath, StorageSubDir)
 	_, imagesPathHasExists := os.Stat(imagesPath)
 
 	if imagesPathHasExists != nil {
@@ -81,42 +84,47 @@ func (d *FSDriver) CreateBranchRevisionDir(projectId string, branch string, revi
 	return d.CreateDir(d.GetBranchRevisionPath(projectId, branch, revision))
 }
 
-func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *gitlab.Branch, tmpPath string) (fileList []string, err error) {
+func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *gitlab.Branch, tmpPath string) (distFiles []string, err error) {
 	branchRevisionPath := d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
 
 	for _, filePath := range project.DistFiles {
 		input, err := os.ReadFile(path.Join(tmpPath, filePath))
 		if err != nil {
-			return fileList, err
+			return distFiles, err
 		}
 
 		destDir, _ := filepath.Split(filePath)
 		destDirSegments := filepath.SplitList(destDir)
-		// TODO: move images path segment to config
-		fileList = append(
-			fileList,
+
+		distFiles = append(
+			distFiles,
 			fmt.Sprintf(
-				"%s/images/%s/%s/%s/%s",
-				d.configMap.HttpBaseUrl, project.ProjectID, glBranch.Name, glBranch.Commit.ShortID, filePath,
+				"%s/%s/%s/%s/%s/%s",
+				d.configMap.HttpBaseUrl, StorageSubDir, project.ProjectID,
+				glBranch.Name, glBranch.Commit.ShortID, filePath,
 			),
 		)
 
-		for _, seg := range destDirSegments {
-			segPath := path.Join(branchRevisionPath, seg)
+		for index, seg := range destDirSegments {
+			prevSegPath := lo.Slice(destDirSegments, 0, index)
+			currSegPath := []string{branchRevisionPath}
+			currSegPath = append(currSegPath, prevSegPath...)
+			currSegPath = append(currSegPath, seg)
+			segPath := path.Join(currSegPath...)
 			if !d.IsDirExists(segPath) {
 				if err := d.CreateDir(segPath); err != nil {
-					return fileList, err
+					return distFiles, err
 				}
 			}
 		}
 
 		err = os.WriteFile(path.Join(branchRevisionPath, filePath), input, 0644)
 		if err != nil {
-			return fileList, err
+			return distFiles, err
 		}
 	}
 
-	return fileList, nil
+	return distFiles, nil
 }
 
 func (d *FSDriver) GetTmpPathForBuild(projectId string, branch string, revision string) string {
