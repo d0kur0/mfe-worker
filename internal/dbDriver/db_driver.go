@@ -6,11 +6,24 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"mfe-worker/internal/configMap"
+	"time"
 )
 
 type DBDriver struct {
 	db        *gorm.DB
 	configMap *configMap.ConfigMap
+}
+
+type Model struct {
+	ID        uint       `gorm:"primary_key" json:"id"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at"`
+}
+
+type Pagination struct {
+	Limit  int
+	Offset int
 }
 
 func (d *DBDriver) Save(image *Image) error {
@@ -22,8 +35,14 @@ func (d *DBDriver) Update(image *Image) error {
 }
 
 func (d *DBDriver) GetList() (images []Image, err error) {
-	err = d.db.Model(&Image{}).Preload("Files").Find(&images).Error
-	return
+	return images, d.db.Model(&Image{}).Preload("Files").Find(&images).Error
+}
+
+func (d *DBDriver) GetImagesOfProject(projectID string, pagination Pagination) (images []Image, err error) {
+	return images, d.db.Model(&Image{}).
+		Preload("Files").
+		Where("project_id = ?", projectID).
+		Limit(pagination.Limit).Offset(pagination.Offset).Find(&images).Error
 }
 
 func (d *DBDriver) CleanUp() error {

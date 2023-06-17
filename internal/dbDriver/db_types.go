@@ -1,7 +1,5 @@
 package dbDriver
 
-import "gorm.io/gorm"
-
 type ImageStatus uint
 
 const (
@@ -11,7 +9,7 @@ const (
 )
 
 type Image struct {
-	gorm.Model
+	Model
 	Files     []ImageFile `json:"files"`
 	Branch    string      `json:"branch"`
 	Status    ImageStatus `json:"status"`
@@ -20,7 +18,7 @@ type Image struct {
 }
 
 type ImageFile struct {
-	gorm.Model
+	Model
 	WebPath string `json:"web_path"`
 	ImageId uint   `json:"-"`
 }
