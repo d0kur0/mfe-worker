@@ -1,3 +1,3 @@
-# MFE-WORKER
+## MFE-WORKER
 
-## Mystic utility for teremok projects
+Mystic utility for teremok projects
