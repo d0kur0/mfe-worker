@@ -38,8 +38,10 @@ func (d *DBDriver) GetList() (images []Image, err error) {
 	return images, d.db.Model(&Image{}).Preload("Files").Find(&images).Error
 }
 
-func (d *DBDriver) GetImagesOfProject(projectID string, pagination Pagination) (images []Image, err error) {
-	return images, d.db.Model(&Image{}).
+func (d *DBDriver) GetImagesOfProject(projectID string, pagination Pagination) (images []Image, total int, err error) {
+	d.db.Model(&Image{}).Select("count (*)").Where("project_id = ?", projectID).Find(&total)
+
+	return images, total, d.db.Model(&Image{}).
 		Preload("Files").
 		Where("project_id = ?", projectID).
 		Limit(pagination.Limit).Offset(pagination.Offset).Find(&images).Error

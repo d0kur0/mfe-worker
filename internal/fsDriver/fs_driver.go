@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"github.com/samber/lo"
 	"github.com/xanzy/go-gitlab"
+	"io"
+	"log"
 	"mfe-worker/internal/configMap"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
 const StorageSubDir = "images"
@@ -84,44 +87,129 @@ func (d *FSDriver) CreateBranchRevisionDir(projectId string, branch string, revi
 	return d.CreateDir(d.GetBranchRevisionPath(projectId, branch, revision))
 }
 
+func (d *FSDriver) CopyFile(source string, dest string) (err error) {
+	sourceFile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+
+	defer func(sourceFile *os.File) {
+		err := sourceFile.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}(sourceFile)
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+
+	defer func(destFile *os.File) {
+		err := destFile.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}(destFile)
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err == nil {
+		sourceInfo, err := os.Stat(source)
+		if err != nil {
+			err = os.Chmod(dest, sourceInfo.Mode())
+		}
+	}
+
+	return
+}
+
+func (d *FSDriver) CopyDir(source string, dest string) (err error) {
+	sourceInfo, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(dest, sourceInfo.Mode())
+	if err != nil {
+		return err
+	}
+
+	directory, _ := os.Open(source)
+	objects, err := directory.Readdir(-1)
+
+	for _, obj := range objects {
+		sourceFilePointer := path.Join(source, obj.Name())
+		destFilePointer := path.Join(dest, obj.Name())
+
+		if obj.IsDir() {
+			err = d.CopyDir(sourceFilePointer, destFilePointer)
+			if err != nil {
+				fmt.Println(err)
+			}
+		} else {
+			err = d.CopyFile(sourceFilePointer, destFilePointer)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+
+	}
+	return
+}
+
 func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *gitlab.Branch, tmpPath string) (distFiles []string, err error) {
 	branchRevisionPath := d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
 
-	for _, filePath := range project.DistFiles {
-		input, err := os.ReadFile(path.Join(tmpPath, filePath))
+	filesWithGlob := lo.Flatten(lo.Map(project.DistFiles, func(filePath string, index int) []string {
+		files, _ := filepath.Glob(path.Join(tmpPath, filePath))
+		return files
+	}))
+
+	for _, filePath := range filesWithGlob {
+		filePathWithoutTmpDir := strings.Trim(strings.ReplaceAll(filePath, tmpPath, ""), "/")
+		destPath := path.Join(branchRevisionPath, filePathWithoutTmpDir)
+
+		objInfo, err := os.Stat(filePath)
 		if err != nil {
 			return distFiles, err
 		}
 
-		destDir, _ := filepath.Split(filePath)
-		destDirSegments := filepath.SplitList(destDir)
+		if objInfo.IsDir() {
+			if err = d.CopyDir(filePath, destPath); err != nil {
+				return distFiles, err
+			}
+		}
+
+		if !objInfo.IsDir() {
+			destDir, _ := filepath.Split(filePathWithoutTmpDir)
+			destDirSegments := filepath.SplitList(destDir)
+
+			for index, seg := range destDirSegments {
+				prevSegPath := lo.Slice(destDirSegments, 0, index)
+				currSegPath := []string{branchRevisionPath}
+				currSegPath = append(currSegPath, prevSegPath...)
+				currSegPath = append(currSegPath, seg)
+				segPath := path.Join(currSegPath...)
+				if !d.IsDirExists(segPath) {
+					if err := d.CreateDir(segPath); err != nil {
+						return distFiles, err
+					}
+				}
+			}
+
+			if err = d.CopyFile(filePath, destPath); err != nil {
+				return distFiles, err
+			}
+		}
 
 		distFiles = append(
 			distFiles,
 			fmt.Sprintf(
 				"%s/%s/%s/%s/%s/%s",
 				d.configMap.HttpBaseUrl, StorageSubDir, project.ProjectID,
-				glBranch.Name, glBranch.Commit.ShortID, filePath,
+				glBranch.Name, glBranch.Commit.ShortID, filePathWithoutTmpDir,
 			),
 		)
-
-		for index, seg := range destDirSegments {
-			prevSegPath := lo.Slice(destDirSegments, 0, index)
-			currSegPath := []string{branchRevisionPath}
-			currSegPath = append(currSegPath, prevSegPath...)
-			currSegPath = append(currSegPath, seg)
-			segPath := path.Join(currSegPath...)
-			if !d.IsDirExists(segPath) {
-				if err := d.CreateDir(segPath); err != nil {
-					return distFiles, err
-				}
-			}
-		}
-
-		err = os.WriteFile(path.Join(branchRevisionPath, filePath), input, 0644)
-		if err != nil {
-			return distFiles, err
-		}
 	}
 
 	return distFiles, nil

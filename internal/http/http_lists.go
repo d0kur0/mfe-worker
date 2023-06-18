@@ -40,7 +40,7 @@ func (h *Server) GetProjectImagesList(c echo.Context) error {
 	projectID := c.Param("projectID")
 	limit, offset := getPagination(c)
 
-	images, err := h.di.DBDriver.GetImagesOfProject(projectID, dbDriver.Pagination{
+	images, total, err := h.di.DBDriver.GetImagesOfProject(projectID, dbDriver.Pagination{
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -51,7 +51,7 @@ func (h *Server) GetProjectImagesList(c echo.Context) error {
 
 	response := Response{
 		Meta: ResponseMeta{
-			Total:  len(h.di.ConfigMap.Projects),
+			Total:  total,
 			Limit:  limit,
 			Offset: offset,
 		},
