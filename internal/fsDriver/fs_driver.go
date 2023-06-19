@@ -157,8 +157,21 @@ func (d *FSDriver) CopyDir(source string, dest string) (err error) {
 	return
 }
 
-func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *gitlab.Branch, tmpPath string) (distFiles []string, err error) {
-	branchRevisionPath := d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID)
+type PickedFile struct {
+	Path    string
+	WebPath string
+}
+
+func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *gitlab.Branch, tmpPath string) (pickedFiles []PickedFile, err error) {
+	branchPath, err := filepath.Abs(d.GetProjectBranchPath(project.ProjectID, glBranch.Name))
+	if err != nil {
+		return pickedFiles, err
+	}
+
+	revisionPath, err := filepath.Abs(d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID))
+	if err != nil {
+		return pickedFiles, err
+	}
 
 	filesWithGlob := lo.Flatten(lo.Map(project.DistFiles, func(filePath string, index int) []string {
 		files, _ := filepath.Glob(path.Join(tmpPath, filePath))
@@ -167,16 +180,16 @@ func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *g
 
 	for _, filePath := range filesWithGlob {
 		filePathWithoutTmpDir := strings.Trim(strings.ReplaceAll(filePath, tmpPath, ""), "/")
-		destPath := path.Join(branchRevisionPath, filePathWithoutTmpDir)
+		destPath := path.Join(revisionPath, filePathWithoutTmpDir)
 
 		objInfo, err := os.Stat(filePath)
 		if err != nil {
-			return distFiles, err
+			return pickedFiles, err
 		}
 
 		if objInfo.IsDir() {
 			if err = d.CopyDir(filePath, destPath); err != nil {
-				return distFiles, err
+				return pickedFiles, err
 			}
 		}
 
@@ -186,33 +199,36 @@ func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *g
 
 			for index, seg := range destDirSegments {
 				prevSegPath := lo.Slice(destDirSegments, 0, index)
-				currSegPath := []string{branchRevisionPath}
+				currSegPath := []string{revisionPath}
 				currSegPath = append(currSegPath, prevSegPath...)
 				currSegPath = append(currSegPath, seg)
 				segPath := path.Join(currSegPath...)
 				if !d.IsDirExists(segPath) {
 					if err := d.CreateDir(segPath); err != nil {
-						return distFiles, err
+						return pickedFiles, err
 					}
 				}
 			}
 
 			if err = d.CopyFile(filePath, destPath); err != nil {
-				return distFiles, err
+				return pickedFiles, err
 			}
 		}
 
-		distFiles = append(
-			distFiles,
-			fmt.Sprintf(
-				"%s/%s/%s/%s/%s/%s",
-				d.configMap.HttpBaseUrl, StorageSubDir, project.ProjectID,
-				glBranch.Name, glBranch.Commit.ShortID, filePathWithoutTmpDir,
-			),
+		pickedFiles = append(
+			pickedFiles,
+			PickedFile{
+				Path: filePathWithoutTmpDir,
+				WebPath: fmt.Sprintf(
+					"%s/static/%s/%s/%s/%s",
+					d.configMap.HttpBaseUrl, project.ProjectID,
+					glBranch.Name, glBranch.Commit.ShortID, filePathWithoutTmpDir,
+				),
+			},
 		)
 	}
 
-	return distFiles, nil
+	return pickedFiles, os.Symlink(revisionPath, path.Join(branchPath, "@latest"))
 }
 
 func (d *FSDriver) GetTmpPathForBuild(projectId string, branch string, revision string) string {

@@ -12,7 +12,7 @@ type Project struct {
 	Name string `json:"name"`
 }
 
-func (h *Server) GetProjectsList(c echo.Context) error {
+func (h *Server) GetProjects(c echo.Context) error {
 	limit, offset := getPagination(c)
 
 	var projects []Project
@@ -36,11 +36,11 @@ func (h *Server) GetProjectsList(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-func (h *Server) GetProjectImagesList(c echo.Context) error {
+func (h *Server) GetBranches(c echo.Context) error {
 	projectID := c.Param("projectID")
 	limit, offset := getPagination(c)
 
-	images, total, err := h.di.DBDriver.GetImagesOfProject(projectID, dbDriver.Pagination{
+	branches, total, err := h.di.DBDriver.GetBranches(projectID, dbDriver.Pagination{
 		Limit:  limit,
 		Offset: offset,
 	})
@@ -55,20 +55,16 @@ func (h *Server) GetProjectImagesList(c echo.Context) error {
 			Limit:  limit,
 			Offset: offset,
 		},
-		Payload: images,
+		Payload: branches,
 	}
 
 	return c.JSON(http.StatusOK, response)
 }
 
-func (h *Server) GetProjectBranches(c echo.Context) error {
+func (h *Server) GetRevisions(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"code": "ADDED_TO_QUEUE"})
 }
 
-func (h *Server) GetProjectBranchImages(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{"code": "ADDED_TO_QUEUE"})
-}
-
-func (h *Server) GetProjectBranchRevisions(c echo.Context) error {
+func (h *Server) GetImages(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"code": "ADDED_TO_QUEUE"})
 }

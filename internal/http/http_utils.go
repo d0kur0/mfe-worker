@@ -11,7 +11,7 @@ func getPagination(c echo.Context) (limit int, offset int) {
 
 	limit, err := strconv.Atoi(requestLimit)
 	if err != nil {
-		limit = 10
+		limit = 20
 	}
 
 	offset, err = strconv.Atoi(requestOffset)

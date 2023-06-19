@@ -1,4 +1,4 @@
-package depsInjection
+package di
 
 import (
 	"github.com/xanzy/go-gitlab"

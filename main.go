@@ -6,7 +6,7 @@ import (
 	"log"
 	"mfe-worker/internal/configMap"
 	"mfe-worker/internal/dbDriver"
-	"mfe-worker/internal/depsInjection"
+	"mfe-worker/internal/di"
 	"mfe-worker/internal/fsDriver"
 	"mfe-worker/internal/http"
 	"mfe-worker/internal/queue"
@@ -34,7 +34,7 @@ func main() {
 	gitlabClientArgs := gitlab.WithBaseURL(fmt.Sprintf("%s/api/v4", configMapInstance.GitlabUrl))
 	gitlabClient, err := gitlab.NewClient(configMapInstance.GitlabToken, gitlabClientArgs)
 
-	diContainer := depsInjection.NewDIContainer(configMapInstance, queue, fsDriverInstance, dbDriverInstance, gitlabClient)
+	diContainer := di.NewDIContainer(configMapInstance, queue, fsDriverInstance, dbDriverInstance, gitlabClient)
 
 	httpServer, err := http.NewHttpServer(diContainer)
 	if err != nil {

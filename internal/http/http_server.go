@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"mfe-worker/internal/depsInjection"
+	"mfe-worker/internal/di"
 	"net/url"
 )
 
 type Server struct {
-	di *depsInjection.DIContainer
+	di *di.DIContainer
 }
 
 func (h *Server) SetupHttpHandlers() error {
@@ -22,14 +22,13 @@ func (h *Server) SetupHttpHandlers() error {
 		Format: "${time_rfc3339} method=${method}, uri=${uri}, status=${status}\n",
 	}))
 
-	e.Static("images", h.di.FSDriver.ImagesPath)
+	e.Static("static", h.di.FSDriver.ImagesPath)
 
 	e.GET("/request-build/:projectID/:branch", h.RequestBuild)
-	e.GET("/projects", h.GetProjectsList)
-	e.GET("/project/:projectID/images", h.GetProjectImagesList)
-	e.GET("/project/:projectID/branches", h.GetProjectBranches)
-	e.GET("/branch-images/:projectID/:branch", h.GetProjectBranchImages)
-	e.GET("/branch-revisions/:projectID/:branch", h.GetProjectBranchRevisions)
+	e.GET("/projects", h.GetProjects)
+	e.GET("/branches/:projectID", h.GetBranches)
+	e.GET("/revisions/:projectID/:branch", h.GetRevisions)
+	e.GET("/images/:projectID/:branch/:revision", h.GetImages)
 
 	u, err := url.Parse(h.di.ConfigMap.HttpBaseUrl)
 	if err != nil {
@@ -39,7 +38,7 @@ func (h *Server) SetupHttpHandlers() error {
 	return e.Start(fmt.Sprintf("%s", u.Host))
 }
 
-func NewHttpServer(di *depsInjection.DIContainer) (*Server, error) {
+func NewHttpServer(di *di.DIContainer) (*Server, error) {
 	return &Server{
 		di: di,
 	}, nil

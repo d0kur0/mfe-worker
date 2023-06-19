@@ -24,7 +24,7 @@ func (h *Server) RequestBuild(c echo.Context) error {
 		if item.ProjectID == projectID {
 			return &item
 		}
-		return nil
+		return agg
 	}, nil)
 
 	if projectFromConfig == nil {
@@ -133,15 +133,16 @@ func (h *Server) RequestBuild(c echo.Context) error {
 			}
 		}
 
-		fileList, err := h.di.FSDriver.PickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName)
+		pickedFiles, err := h.di.FSDriver.PickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName)
 		if err != nil {
 			return err
 		}
 
 		var imageFiles []dbDriver.ImageFile
-		for _, filePath := range fileList {
+		for _, file := range pickedFiles {
 			imageFiles = append(imageFiles, dbDriver.ImageFile{
-				WebPath: filePath,
+				Path:    file.Path,
+				WebPath: file.WebPath,
 				ImageId: image.ID,
 			})
 		}
