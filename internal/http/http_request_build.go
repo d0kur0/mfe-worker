@@ -154,7 +154,7 @@ func (h *Server) RequestBuild(c echo.Context) error {
 			cmdName := cmdSegments[0]
 			cmdArgs := lo.Slice(cmdSegments, 1, len(cmdSegments))
 
-			if _, err = shell.ExecShellCommand(cmdName, cmdArgs, shell.ExecShellCommandArgs{Cwd: tmpDirName}); err != nil {
+			if _, err = shell.ExecShellCommand(cmdName, cmdArgs, shell.ExecShellCommandArgs{Cwd: tmpDirName, Debug: true}); err != nil {
 				return errors.Join(fmt.Errorf("failed on exec build command from cfg: %s ", cmd), err)
 			}
 		}
