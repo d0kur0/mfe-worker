@@ -54,7 +54,7 @@ func (q *Queue) StartQueueWorker() {
 
 				wg.Wait()
 
-				q.queue = lo.Slice(q.queue, Length, len(q.queue))
+				q.queue = lo.Slice(q.queue, len(batch), len(q.queue))
 				q.queueStatus = StatusFree
 			}
 		}

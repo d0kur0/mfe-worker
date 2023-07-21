@@ -2,18 +2,17 @@ package dbDriver
 
 import "time"
 
-type ImageStatus uint
+type BuildStatus uint
 
 const (
-	ImageStatusQueued     ImageStatus = iota
-	ImageStatusReady                  = iota
-	ImageStatusInProgress             = iota
+	BuildStatusReady      BuildStatus = iota
+	BuildStatusInProgress             = iota
 )
 
 type Model struct {
 	ID        uint       `gorm:"primary_key" json:"-"`
 	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at" json:"-"`
+	UpdatedAt time.Time  `json:"updated_at"`
 	DeletedAt *time.Time `json:"deleted_at"`
 }
 
@@ -22,28 +21,30 @@ type Pagination struct {
 	Offset int
 }
 
-type Image struct {
+type Branch struct {
 	Model
-	Files     []ImageFile `json:"files"`
-	Branch    string      `json:"branch"`
-	Status    ImageStatus `json:"status"`
-	Revision  string      `json:"revision"`
-	ProjectId string      `json:"project_id"`
+	Name      string     `json:"name"`
+	ProjectId string     `json:"project_id"`
+	Revisions []Revision `json:"revisions,omitempty"`
 }
 
-type ImageFile struct {
+type Revision struct {
+	Model
+	Name     string `json:"name"`
+	Build    *Build `json:"build,omitempty"`
+	BranchId uint   `json:"branch_id"`
+}
+
+type Build struct {
+	Model
+	Files      []BuildFiles `json:"files,omitempty"`
+	Status     BuildStatus  `json:"status,omitempty"`
+	RevisionId uint         `gorm:"index:unique_revision,unique" json:"revision_id"`
+}
+
+type BuildFiles struct {
 	Model
 	Path    string `json:"path"`
 	WebPath string `json:"web_path"`
-	ImageId uint   `json:"-"`
-}
-
-type ExtendedImage struct {
-	Image
-	RevCount uint
-}
-
-type BranchInfo struct {
-	Name     string `json:"name"`
-	RevCount uint   `json:"revisions_count"`
+	BuildId uint   `json:"build_id"`
 }

@@ -13,62 +13,136 @@ type DBDriver struct {
 	configMap *configMap.ConfigMap
 }
 
-func (d *DBDriver) Save(image *Image) error {
-	return d.db.Create(&image).Error
+// branches
+
+func (d *DBDriver) CreateBranch(branch *Branch) (*Branch, error) {
+	return branch, d.db.Create(branch).Error
 }
 
-func (d *DBDriver) Update(image *Image) error {
-	return d.db.Updates(&image).Error
+func (d *DBDriver) UpdateBranch(branch *Branch) (*Branch, error) {
+	return branch, d.db.Updates(branch).Error
 }
 
-func (d *DBDriver) GetImagesOfProject(projectID string, pagination Pagination) (images []Image, total int, err error) {
-	d.db.Model(&Image{}).Select("count (*)").Where("project_id = ?", projectID).Find(&total)
-
-	return images, total, d.db.Model(&Image{}).
-		Preload("Files").
-		Where("project_id = ?", projectID).
-		Limit(pagination.Limit).Offset(pagination.Offset).Find(&images).Error
+func (d *DBDriver) DeleteBranch(branch *Branch) error {
+	return d.db.Delete(branch).Error
 }
 
-func (d *DBDriver) GetBranches(projectID string, pagination Pagination) (branches []BranchInfo, total int, err error) {
-	var images []ExtendedImage
+func (d *DBDriver) GetBranch(projectId, name string) (*Branch, error) {
+	var branch *Branch
 
-	d.db.Model(&Image{}).
-		Select("COUNT (DISTINCT branch)").
-		Where("project_id = ?", projectID).
-		Find(&total)
+	err := d.db.Model(Branch{}).Where(Branch{
+		Name:      name,
+		ProjectId: projectId,
+	}).Preload("Revisions").First(&branch).Error
 
-	err = d.db.Model(&Image{}).
-		Distinct("branch").
-		Select("*, (SELECT COUNT(*) FROM `images` WHERE branch = images.branch) AS rev_count").
-		Where("project_id = ?", projectID).
-		Limit(pagination.Limit).Offset(pagination.Offset).
-		Find(&images).Error
-
-	for _, image := range images {
-		branches = append(branches, BranchInfo{
-			Name:     image.Branch,
-			RevCount: image.RevCount,
-		})
+	if err != nil {
+		return nil, err
 	}
 
-	return branches, total, err
+	return branch, err
 }
 
-func (d *DBDriver) CleanUp() error {
-	return nil
+// revisions
+
+func (d *DBDriver) CreateRevision(revision *Revision) (*Revision, error) {
+	return revision, d.db.Create(revision).Error
 }
 
-func (d *DBDriver) IsRevisionExists(projectId string, branch string, revision string) bool {
-	var hasImageWithSameRevision bool
+func (d *DBDriver) UpdateRevision(revision *Revision) (*Revision, error) {
+	return revision, d.db.Updates(revision).Error
+}
 
-	d.db.
-		Model(&Image{}).
-		Select("count(*) > 0").
-		Where("revision = ? AND project_id = ? AND branch = ?", revision, projectId, branch).
-		Find(&hasImageWithSameRevision)
+func (d *DBDriver) DeleteRevision(revision *Revision) error {
+	return d.db.Delete(revision).Error
+}
 
-	return hasImageWithSameRevision
+// builds
+
+func (d *DBDriver) CreateBuild(build *Build) (*Build, error) {
+	return build, d.db.Create(build).Error
+}
+
+func (d *DBDriver) UpdateBuild(build *Build) (*Build, error) {
+	return build, d.db.Updates(&build).Error
+}
+
+func (d *DBDriver) DeleteBuild(build *Build) error {
+	return d.db.Delete(build).Error
+}
+
+func (d *DBDriver) GetBranches(projectId string, pagination Pagination) (list []Branch, total int64, err error) {
+	d.db.Model(Branch{}).Where(Branch{
+		ProjectId: projectId,
+	}).Limit(pagination.Limit).Preload("Revisions").Offset(pagination.Offset).Find(&list).Count(&total)
+
+	return
+}
+
+func (d *DBDriver) GetRevisions(projectId, branch string, pagination Pagination) (list []Revision, total int64, err error) {
+	type TmpList struct {
+		*Revision
+		Total uint
+	}
+
+	var tmpList []TmpList
+
+	err = d.db.Raw(`
+    SELECT 
+			r.*, 
+			(
+				SELECT 
+					count(*) 
+				FROM 
+					revisions r 
+				WHERE 
+					b.id = r.branch_id
+			) as total 
+		FROM 
+			branches b 
+			JOIN revisions r on b.id = r.branch_id 
+		WHERE
+			b.project_id = ? 
+			AND b.name = ? 
+		ORDER BY 
+			b.id DESC 
+		LIMIT 
+			? OFFSET ?
+  `, projectId, branch, pagination.Limit, pagination.Offset).Scan(&tmpList).Error
+
+	for _, r := range tmpList {
+		list = append(list, Revision{
+			Model:    r.Model,
+			Name:     r.Name,
+			Build:    r.Build,
+			BranchId: r.BranchId,
+		})
+
+		total = int64(r.Total)
+	}
+
+	return
+}
+
+func (d *DBDriver) GetBuilds(branch *Branch, revision string, pagination Pagination) (builds []Build, total int64, err error) {
+	var rev *Revision
+	for _, r := range branch.Revisions {
+		if r.Name == revision {
+			rev = &r
+			break
+		}
+	}
+
+	if rev == nil {
+		return
+	}
+
+	err = d.db.Model(&Build{}).Where(&Build{RevisionId: rev.ID}).
+		Limit(pagination.Limit).
+		Offset(pagination.Offset).
+		Preload("Files").
+		Find(&builds).Error
+
+	return
 }
 
 func NewDBDriver(configMap *configMap.ConfigMap) (*DBDriver, error) {
@@ -77,7 +151,7 @@ func NewDBDriver(configMap *configMap.ConfigMap) (*DBDriver, error) {
 		return nil, errors.Join(fmt.Errorf("failed on open sqlite db on path: %s", configMap.DBPath), err)
 	}
 
-	err = db.AutoMigrate(&ImageFile{}, &Image{})
+	err = db.AutoMigrate(&Branch{}, &Revision{}, &BuildFiles{}, &Build{})
 	if err != nil {
 		return nil, errors.Join(errors.New("failed on auto migrate db models"), err)
 	}

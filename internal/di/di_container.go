@@ -8,7 +8,7 @@ import (
 	"mfe-worker/internal/queue"
 )
 
-type DIContainer struct {
+type Container struct {
 	Queue        *queue.Queue
 	FSDriver     *fsDriver.FSDriver
 	DBDriver     *dbDriver.DBDriver
@@ -16,8 +16,8 @@ type DIContainer struct {
 	GitlabClient *gitlab.Client
 }
 
-func NewDIContainer(configMap *configMap.ConfigMap, queue *queue.Queue, fsDriver *fsDriver.FSDriver, dbDriver *dbDriver.DBDriver, gitlabClient *gitlab.Client) *DIContainer {
-	return &DIContainer{
+func NewDIContainer(configMap *configMap.ConfigMap, queue *queue.Queue, fsDriver *fsDriver.FSDriver, dbDriver *dbDriver.DBDriver, gitlabClient *gitlab.Client) *Container {
+	return &Container{
 		Queue:        queue,
 		FSDriver:     fsDriver,
 		DBDriver:     dbDriver,

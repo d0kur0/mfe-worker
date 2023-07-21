@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/samber/lo"
 	"github.com/xanzy/go-gitlab"
+	"gorm.io/gorm"
 	"log"
 	"mfe-worker/internal/configMap"
 	"mfe-worker/internal/dbDriver"
@@ -17,61 +18,107 @@ import (
 )
 
 func (h *Server) RequestBuild(c echo.Context) error {
-	branch := c.Param("branch")
-	projectID := c.Param("projectID")
+	requestBranch := c.Param("branch")
+	requestProjectId := c.Param("projectId")
 
 	projectFromConfig := lo.Reduce(h.di.ConfigMap.Projects, func(agg *configMap.Project, item configMap.Project, index int) *configMap.Project {
-		if item.ProjectID == projectID {
+		if item.ProjectID == requestProjectId {
 			return &item
 		}
 		return agg
 	}, nil)
 
 	if projectFromConfig == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"code": "UNKNOWN_PROJECT_ID"})
+		return c.JSON(http.StatusBadRequest, Response{
+			Meta:    ResponseMeta{ErrorCode: ErrorUnknownProject},
+			Payload: nil,
+		})
 	}
 
 	if len(projectFromConfig.Branches) != 0 {
 		hasBranch := lo.Filter(projectFromConfig.Branches, func(item string, index int) bool {
-			return item == branch
+			return item == requestBranch
 		})
 
 		if len(hasBranch) == 0 {
-			return c.JSON(http.StatusBadRequest, map[string]string{"code": "UNKNOWN_BRANCH_OF_PROJECT"})
+			return c.JSON(http.StatusBadRequest, Response{
+				Meta:    ResponseMeta{ErrorCode: ErrorBranchNotAllowed},
+				Payload: nil,
+			})
 		}
 	}
 
-	gitBranch, _, err := h.di.GitlabClient.Branches.GetBranch(projectID, branch)
+	gitlabBranch, _, err := h.di.GitlabClient.Branches.GetBranch(requestProjectId, requestBranch)
 	if err != nil {
-		log.Printf("failed on get info of branch: %s", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"code": "SERVER_WAS_SUCK"})
+		log.Println(err)
+		return c.JSON(http.StatusInternalServerError, Response{
+			Meta: ResponseMeta{ErrorCode: ErrorServerSuck},
+		})
 	}
 
-	if h.di.DBDriver.IsRevisionExists(projectID, branch, gitBranch.Commit.ShortID) {
-		return c.JSON(http.StatusBadRequest, map[string]string{"code": "BRANCH_NOT_CHANGED"})
+	latestGitlabCommit := gitlabBranch.Commit
+
+	branch, err := h.di.DBDriver.GetBranch(requestProjectId, requestBranch)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Println(err)
+		return c.JSON(http.StatusInternalServerError, Response{
+			Meta: ResponseMeta{ErrorCode: ErrorServerSuck},
+		})
+	}
+
+	if branch == nil {
+		branch, err = h.di.DBDriver.CreateBranch(&dbDriver.Branch{
+			Name:      requestBranch,
+			ProjectId: requestProjectId,
+		})
+
+		if err != nil {
+			log.Println(err)
+			return c.JSON(http.StatusInternalServerError, Response{
+				Meta: ResponseMeta{ErrorCode: ErrorServerSuck},
+			})
+		}
+	}
+
+	for _, revision := range branch.Revisions {
+		if revision.Name == latestGitlabCommit.ID {
+			return c.JSON(http.StatusConflict, Response{
+				Meta: ResponseMeta{ErrorCode: ErrorRevisionExists},
+			})
+		}
+	}
+
+	revision, err := h.di.DBDriver.CreateRevision(&dbDriver.Revision{
+		Name:     latestGitlabCommit.ID,
+		BranchId: branch.ID,
+	})
+
+	if err != nil {
+		log.Println(err)
+		return c.JSON(http.StatusInternalServerError, Response{
+			Meta: ResponseMeta{ErrorCode: ErrorServerSuck},
+		})
 	}
 
 	h.di.Queue.AddToQueue(func(wg *sync.WaitGroup) error {
 		defer wg.Done()
 
 		gitProject, _, err := h.di.GitlabClient.Projects.GetProject(
-			projectID,
+			requestProjectId,
 			&gitlab.GetProjectOptions{},
 		)
 
 		if err != nil {
-			return errors.Join(fmt.Errorf("failed on get info of project (ID: %s)", projectID), err)
+			return err
 		}
 
-		image := dbDriver.Image{
-			Branch:    branch,
-			Status:    dbDriver.ImageStatusQueued,
-			Revision:  gitBranch.Commit.ShortID,
-			ProjectId: projectID,
-		}
+		build, err := h.di.DBDriver.CreateBuild(&dbDriver.Build{
+			Status:     dbDriver.BuildStatusInProgress,
+			RevisionId: revision.ID,
+		})
 
-		if err := h.di.DBDriver.Save(&image); err != nil {
-			return errors.Join(errors.New("failed on create image to db"), err)
+		if err != nil {
+			return err
 		}
 
 		defer func(fsDriver *fsDriver.FSDriver, projectId string, branch string, revision string) {
@@ -79,11 +126,11 @@ func (h *Server) RequestBuild(c echo.Context) error {
 			if err != nil {
 				log.Printf("failed on clear tmp dir: %s", err)
 			}
-		}(h.di.FSDriver, projectID, branch, gitBranch.Commit.ShortID)
+		}(h.di.FSDriver, requestProjectId, requestBranch, revision.Name)
 
-		tmpDirName := h.di.FSDriver.GetTmpPathForBuild(projectID, branch, gitBranch.Commit.ShortID)
+		tmpDirName := h.di.FSDriver.GetTmpPathForBuild(requestProjectId, requestBranch, gitlabBranch.Commit.ID)
 
-		if h.di.FSDriver.HasTmpDirForBuild(projectID, branch, gitBranch.Commit.ShortID) {
+		if h.di.FSDriver.HasTmpDirForBuild(requestProjectId, requestProjectId, gitlabBranch.Commit.ID) {
 			return fmt.Errorf("tmp dir already exists, skip: %s", tmpDirName)
 		}
 
@@ -96,7 +143,7 @@ func (h *Server) RequestBuild(c echo.Context) error {
 			gitProject.Name,
 		)
 
-		cloneArgs := []string{"clone", "--single-branch", "--branch", branch, clonePath, tmpDirName}
+		cloneArgs := []string{"clone", "--single-branch", "--branch", requestBranch, clonePath, tmpDirName}
 
 		if _, err = shell.ExecShellCommand("git", cloneArgs, shell.ExecShellCommandArgs{}); err != nil {
 			return errors.Join(fmt.Errorf("failed on clone project (args: %x)", cloneArgs), err)
@@ -112,45 +159,48 @@ func (h *Server) RequestBuild(c echo.Context) error {
 			}
 		}
 
-		projectExists := h.di.FSDriver.HasProjectDir(projectID)
+		projectExists := h.di.FSDriver.HasProjectDir(requestProjectId)
 		if !projectExists {
-			if err := h.di.FSDriver.CreateProjectDir(projectID); err != nil {
+			if err := h.di.FSDriver.CreateProjectDir(requestProjectId); err != nil {
 				return err
 			}
 		}
 
-		branchExists := h.di.FSDriver.HasProjectBranchDir(projectID, branch)
+		branchExists := h.di.FSDriver.HasProjectBranchDir(requestProjectId, requestBranch)
 		if !branchExists {
-			if err := h.di.FSDriver.CreateProjectBranchDir(projectID, branch); err != nil {
+			if err := h.di.FSDriver.CreateProjectBranchDir(requestProjectId, requestBranch); err != nil {
 				return err
 			}
 		}
 
-		branchRevisionExists := h.di.FSDriver.HasBranchRevisionDir(projectID, branch, gitBranch.Commit.ShortID)
+		branchRevisionExists := h.di.FSDriver.HasBranchRevisionDir(requestProjectId, requestBranch, gitlabBranch.Commit.ID)
 		if !branchRevisionExists {
-			if err := h.di.FSDriver.CreateBranchRevisionDir(projectID, branch, gitBranch.Commit.ShortID); err != nil {
+			if err := h.di.FSDriver.CreateBranchRevisionDir(requestProjectId, requestBranch, gitlabBranch.Commit.ID); err != nil {
 				return err
 			}
 		}
 
-		pickedFiles, err := h.di.FSDriver.PickFilesToWebStorage(projectFromConfig, gitBranch, tmpDirName)
+		pickedFiles, err := h.di.FSDriver.PickFilesToWebStorage(projectFromConfig, gitlabBranch, tmpDirName)
 		if err != nil {
 			return err
 		}
 
-		var imageFiles []dbDriver.ImageFile
+		var buildFiles []dbDriver.BuildFiles
 		for _, file := range pickedFiles {
-			imageFiles = append(imageFiles, dbDriver.ImageFile{
+			buildFiles = append(buildFiles, dbDriver.BuildFiles{
 				Path:    file.Path,
 				WebPath: file.WebPath,
-				ImageId: image.ID,
+				BuildId: build.ID,
 			})
 		}
 
-		image.Files = imageFiles
-		image.Status = dbDriver.ImageStatusReady
-		return h.di.DBDriver.Update(&image)
+		build.Files = buildFiles
+		build.Status = dbDriver.BuildStatusReady
+		_, err = h.di.DBDriver.UpdateBuild(build)
+		return err
 	})
 
-	return c.JSON(http.StatusOK, map[string]string{"code": "ADDED_TO_QUEUE"})
+	return c.JSON(http.StatusOK, Response{
+		Payload: map[string]string{"code": "ADDED_TO_QUEUE"},
+	})
 }

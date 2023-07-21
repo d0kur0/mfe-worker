@@ -168,7 +168,7 @@ func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *g
 		return pickedFiles, err
 	}
 
-	revisionPath, err := filepath.Abs(d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ShortID))
+	revisionPath, err := filepath.Abs(d.GetBranchRevisionPath(project.ProjectID, glBranch.Name, glBranch.Commit.ID))
 	if err != nil {
 		return pickedFiles, err
 	}
@@ -222,10 +222,16 @@ func (d *FSDriver) PickFilesToWebStorage(project *configMap.Project, glBranch *g
 				WebPath: fmt.Sprintf(
 					"%s/static/%s/%s/%s/%s",
 					d.configMap.HttpBaseUrl, project.ProjectID,
-					glBranch.Name, glBranch.Commit.ShortID, filePathWithoutTmpDir,
+					glBranch.Name, glBranch.Commit.ID, filePathWithoutTmpDir,
 				),
 			},
 		)
+	}
+
+	if _, err = os.Lstat(path.Join(branchPath, "@latest")); err == nil {
+		if err = os.Remove(path.Join(branchPath, "@latest")); err != nil {
+			return
+		}
 	}
 
 	return pickedFiles, os.Symlink(revisionPath, path.Join(branchPath, "@latest"))

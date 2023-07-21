@@ -9,7 +9,7 @@ import (
 )
 
 type Server struct {
-	di *di.DIContainer
+	di *di.Container
 }
 
 func (h *Server) SetupHttpHandlers() error {
@@ -24,11 +24,11 @@ func (h *Server) SetupHttpHandlers() error {
 
 	e.Static("static", h.di.FSDriver.ImagesPath)
 
-	e.GET("/request-build/:projectID/:branch", h.RequestBuild)
+	e.GET("/request-build/:projectId/:branch", h.RequestBuild)
 	e.GET("/projects", h.GetProjects)
-	e.GET("/branches/:projectID", h.GetBranches)
-	e.GET("/revisions/:projectID/:branch", h.GetRevisions)
-	e.GET("/images/:projectID/:branch/:revision", h.GetImages)
+	e.GET("/branches/:projectId", h.GetBranches)
+	e.GET("/revisions/:projectId/:branch", h.GetRevisions)
+	e.GET("/builds/:projectId/:branch/:revision", h.GetBuilds)
 
 	u, err := url.Parse(h.di.ConfigMap.HttpBaseUrl)
 	if err != nil {
@@ -38,7 +38,7 @@ func (h *Server) SetupHttpHandlers() error {
 	return e.Start(fmt.Sprintf("%s", u.Host))
 }
 
-func NewHttpServer(di *di.DIContainer) (*Server, error) {
+func NewHttpServer(di *di.Container) (*Server, error) {
 	return &Server{
 		di: di,
 	}, nil
